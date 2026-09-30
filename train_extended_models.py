@@ -451,6 +451,48 @@ def main():
     misclassified_df.to_csv("models/misclassified_samples.csv", index=False)
     print("Sample misclassified cases saved to models/misclassified_samples.csv for deep error analysis.")
     
+    # ----------------------------------------------------
+    # Inter-Model Disagreement Analysis (Requirement 2 - Meaning 2)
+    # ----------------------------------------------------
+    print("\n--- Inter-Model Disagreement Analysis (Decision Tree vs Random Forest vs XGBoost) ---")
+    dt_preds = test_predictions["Decision Tree"]
+    xgb_preds = test_predictions["XGBoost"]
+    
+    dt_rf_disagree_mask = (dt_preds != rf_preds)
+    dt_rf_disagree_indices = np.where(dt_rf_disagree_mask)[0]
+    total_dt_rf = len(dt_rf_disagree_indices)
+    
+    rf_correct = int(np.sum(rf_preds[dt_rf_disagree_indices] == y_test[dt_rf_disagree_indices]))
+    dt_correct = int(np.sum(dt_preds[dt_rf_disagree_indices] == y_test[dt_rf_disagree_indices]))
+    
+    print(f"Total test URLs where DT and RF disagreed: {total_dt_rf:,}")
+    print(f"Random Forest was correct in {rf_correct:,} disagreements ({(rf_correct/total_dt_rf)*100:.2f}%)")
+    print(f"Decision Tree was correct in {dt_correct:,} disagreements ({(dt_correct/total_dt_rf)*100:.2f}%)")
+    
+    sample_dis_idx = dt_rf_disagree_indices[:200]
+    who_was_right = []
+    for idx in sample_dis_idx:
+        rf_ok = (rf_preds[idx] == y_test[idx])
+        dt_ok = (dt_preds[idx] == y_test[idx])
+        if rf_ok and not dt_ok:
+            who_was_right.append("Random Forest (Ensemble)")
+        elif dt_ok and not rf_ok:
+            who_was_right.append("Decision Tree")
+        else:
+            who_was_right.append("Neither (Both Wrong)")
+            
+    disagreement_df = pd.DataFrame({
+        "Test_Index": sample_dis_idx,
+        "URL": urls_test.iloc[sample_dis_idx].values,
+        "Actual_Label": ["Phishing (1)" if yt == 1 else "Legitimate (0)" for yt in y_test[sample_dis_idx]],
+        "DT_Prediction": ["Phishing (1)" if p == 1 else "Legitimate (0)" for p in dt_preds[sample_dis_idx]],
+        "RF_Prediction": ["Phishing (1)" if p == 1 else "Legitimate (0)" for p in rf_preds[sample_dis_idx]],
+        "XGB_Prediction": ["Phishing (1)" if p == 1 else "Legitimate (0)" for p in xgb_preds[sample_dis_idx]],
+        "More_Logical_Winner": who_was_right
+    })
+    disagreement_df.to_csv("models/model_disagreements.csv", index=False)
+    print("Model disagreement analysis cases saved to models/model_disagreements.csv")
+    
     # ==========================================
     # 7. Generate Confusion Matrix Plot
     # ==========================================
